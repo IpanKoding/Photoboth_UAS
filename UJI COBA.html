@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Virtual Photobooth</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/tracking-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/data/face-min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #87CEEB; 
+            background-image: 
+                radial-gradient(white 15%, transparent 16%),
+                radial-gradient(white 15%, transparent 16%);
+            background-size: 60px 60px;
+            background-position: 0 0, 30px 30px;
+            margin: 0;
+            overflow-x: hidden;
+            color: #000;
+        }
+
+        /* Pixel UI Windows */
+        .pixel-window {
+            background-color: #fff;
+            border: 4px solid #000;
+            box-shadow: 8px 8px 0px #000;
+            position: relative;
+        }
+        .pixel-header {
+            background-color: #ffb6c1;
+            border-bottom: 4px solid #000;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pixel-header.blue { background-color: #add8e6; }
+        .pixel-header.yellow { background-color: #fdfd96; }
+        
+        .pixel-btn {
+            background-color: #98fb98;
+            border: 4px solid #000;
+            box-shadow: 4px 4px 0px #000;
+            padding: 12px 20px;
+            color: #000;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+            display: inline-block;
+            text-align: center;
+        }
+        .pixel-btn:hover { background-color: #7fffd4; }
+        .pixel-btn:active {
+            transform: translate(4px, 4px);
+            box-shadow: 0px 0px 0px #000;
+        }
+        .pixel-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: 4px 4px 0px #000;
+        }
+
+        /* Screen Management */
+        .page-screen {
+            display: none;
+            min-height: 100vh;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .page-screen.active {
+            display: flex;
+        }
+
+        /* Camera Viewfinder */
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            aspect-ratio: 4/3;
+            background: #000;
+            border: 4px solid #000;
+            overflow: hidden;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #overlay-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+        }
+        #flash {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: white;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.1s ease-out;
+            z-index: 10;
+        }
+        .flashing { opacity: 1 !important; transition: none !important; }
+        
+        #countdown {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 100px;
+            color: white;
+            text-shadow: 6px 6px 0 #000, -6px -6px 0 #000, 6px -6px 0 #000, -6px 6px 0 #000;
+            z-index: 20;
+            display: none;
+        }
+
+        select.pixel-input {
+            border: 4px solid #000;
+            padding: 10px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 10px;
+            outline: none;
+            box-shadow: 4px 4px 0px #000;
+            cursor: pointer;
+        }
+
+        /* Layout Editor */
+        .layout-slot {
+            border: 4px dashed #000;
+            background: #eee;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .layout-slot:hover { border-style: solid; background: #ddd; }
+        .layout-slot.selected {
+            border-style: solid;
+            border-color: #ff1493;
+            box-shadow: 0 0 15px #ff1493;
+        }
+        .layout-slot img {
+            width: 100%; height: 100%; object-fit: cover;
+        }
+        .slot-number {
+            position: absolute;
+            top: 5px; left: 5px;
+            background: #000; color: #fff;
+            padding: 5px; font-size: 10px;
+        }
+        
+        /* Custom Background Image Preview in Selection */
+        .bg-template {
+            background-size: cover;
+            background-position: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="page-1" class="page-screen active">
+        <div class="text-center">
+            <h1 class="text-4xl md:text-6xl mb-8 leading-tight text-white" style="text-shadow: 4px 4px 0 #000;">
+                PIXEL<br>PHOTOBOOTH
+            </h1>
+            <div class="pixel-window inline-block p-8 bg-[#fdfd96] max-w-lg">
+                <p class="text-[10px] md:text-xs mb-8 text-gray-800 leading-6">
+                    Selamat datang di Photobooth Virtual!<br><br>
+                    Siapkan pose terbaikmu untuk 4 jepretan. Sesi terakhir akan direkam sebagai animasi GIF!
+                </p>
+                <button onclick="goToPage(2)" class="pixel-btn text-xl w-full" style="background-color: #ffb6c1;">MULAI SEKARANG</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="page-2" class="page-screen">
+        <div class="pixel-window w-full max-w-4xl">
+            <div class="pixel-header blue">
+                <span class="text-xs md:text-sm">STEP 1: PILIH TEMA FRAME</span>
+            </div>
+            <div class="p-6">
+                <div class="flex flex-wrap justify-center gap-4 mb-8">
+                    <div onclick="selectFrame('pink')" class="frame-option w-32 cursor-pointer border-4 border-black p-2 text-center bg-gray-100" id="frame-opt-pink">
+                        <div class="w-full aspect-[3/4] bg-[#ffb6c1] border-2 border-black mb-2 flex items-center justify-center text-[8px]">Pink Pastel</div>
+                    </div>
+                    <div onclick="selectFrame('blue')" class="frame-option w-32 cursor-pointer border-4 border-transparent hover:border-black p-2 text-center bg-gray-100" id="frame-opt-blue">
+                        <div class="w-full aspect-[3/4] bg-[#add8e6] border-2 border-black mb-2 flex items-center justify-center text-[8px]">Blue Sky</div>
+                    </div>
+                    <div onclick="selectFrame('dark')" class="frame-option w-32 cursor-pointer border-4 border-transparent hover:border-black p-2 text-center bg-gray-100" id="frame-opt-dark">
+                        <div class="w-full aspect-[3/4] bg-[#222222] border-2 border-black mb-2 flex items-center justify-center text-white text-[8px]">Dark Retro</div>
+                    </div>
+                    
+                    <div onclick="selectFrame('rock_debut')" class="frame-option w-32 cursor-pointer border-4 border-transparent hover:border-black p-2 text-center bg-gray-100" id="frame-opt-rock_debut">
+                        <div class="w-full aspect-[3/4] bg-template border-2 border-black mb-2 flex flex-col items-center justify-center text-white text-[8px] bg-black" style="background-image: url('Layer 3.jpg'); text-shadow: 1px 1px 0 #000;">
+                            <br>Rock Debut
+                        </div>
+                    </div>
+                    
+                    <div onclick="selectFrame('rock_muda')" class="frame-option w-32 cursor-pointer border-4 border-transparent hover:border-black p-2 text-center bg-gray-100" id="frame-opt-rock_muda">
+                        <div class="w-full aspect-[3/4] bg-template border-2 border-black mb-2 flex flex-col items-center justify-center text-white text-[8px] bg-red-800" style="background-image: url('Layer 2 copy.jpg'); text-shadow: 1px 1px 0 #000;">
+                            <br>Muda Berbahaya
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between mt-4">
+                    <button onclick="goToPage(1)" class="pixel-btn text-[10px]" style="background-color: #ccc;">KEMBALI</button>
+                    <button onclick="goToPage(3)" class="pixel-btn text-[10px]">LANJUT KE KAMERA</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="page-3" class="page-screen">
+        <div class="flex flex-col md:flex-row gap-6 items-start justify-center w-full max-w-5xl">
+            <div class="pixel-window w-full md:w-2/3">
+                <div class="pixel-header">
+                    <span class="text-xs">VIEWFINDER</span>
+                    <span id="capture-status" class="text-[10px] bg-black text-white px-2 py-1">0 / 4 FOTO</span>
+                </div>
+                <div class="p-4 bg-gray-200">
+                    <div id="video-container" class="mx-auto shadow-inner">
+                        <video id="video" autoplay playsinline muted></video>
+                        <canvas id="overlay-canvas"></canvas>
+                        <div id="flash"></div>
+                        <div id="countdown">3</div>
+                    </div>
+                    <div class="mt-6 flex justify-center">
+                        <button id="btnCapture" class="pixel-btn w-full md:w-auto text-sm" style="background-color: #fdfd96;">AMBIL 4 FOTO SEKARANG</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pixel-window w-full md:w-1/3">
+                <div class="pixel-header yellow">
+                    <span class="text-xs">EFEK & FILTER</span>
+                </div>
+                <div class="p-6 flex flex-col gap-6 bg-white">
+                    <div>
+                        <label class="block text-[10px] mb-3">Filter Warna:</label>
+                        <select id="colorFilter" class="pixel-input w-full">
+                            <option value="none">Normal</option>
+                            <option value="grayscale(100%)">Hitam Putih</option>
+                            <option value="sepia(100%)">Sepia Retro</option>
+                            <option value="hue-rotate(90deg)">Alien (Hue)</option>
+                            <option value="contrast(150%) saturate(150%)">Vivid Pop</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] mb-3">Filter Wajah (Instagram Style):</label>
+                        <select id="faceFilter" class="pixel-input w-full">
+                            <option value="none">Tanpa Efek</option>
+                            <option value="glasses">Kacamata Pixel</option>
+                            <option value="censor">Sensor Mata</option>
+                        </select>
+                        <p class="text-[8px] text-gray-500 mt-2 leading-4">*Membutuhkan deteksi wajah yang jelas di depan kamera.</p>
+                    </div>
+                    <div class="mt-4 pt-4 border-t-4 border-black border-dashed">
+                        <button onclick="goToPage(2)" class="pixel-btn w-full text-[10px]" style="background-color: #ffb6c1;">UBAH FRAME AWAL</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="page-4" class="page-screen">
+        <div class="pixel-window w-full max-w-4xl">
+            <div class="pixel-header">
+                <span class="text-xs">STEP 3: EDIT KOLASE</span>
+            </div>
+            <div class="p-6 flex flex-col md:flex-row gap-8 bg-white">
+                <div class="w-full md:w-1/2 flex justify-center items-center bg-gray-200 p-6 border-4 border-black relative min-h-[400px]">
+                    <div id="layout-preview-container" class="grid grid-cols-2 gap-2 w-full max-w-[300px] aspect-square">
+                        </div>
+                </div>
+
+                <div class="w-full md:w-1/2 flex flex-col gap-5">
+                    <div class="bg-[#fdfd96] p-4 border-4 border-black text-[10px] leading-5">
+                        <b class="text-xs">TUKAR POSISI FOTO:</b><br><br>
+                        Klik satu foto, lalu klik foto lainnya untuk menukar posisi mereka. <br>
+                        <i>(Kotak berlabel merah adalah animasi GIF)</i>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-[10px] mb-2">Pilih Bentuk Layout:</label>
+                        <select id="layoutType" class="pixel-input w-full">
+                            <option value="grid">Kotak - Grid 2x2</option>
+                            <option value="strip">Memanjang - Photostrip</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] mb-2">Ubah Warna/Tema Frame:</label>
+                        <select id="frameTypeFinal" class="pixel-input w-full">
+                            <option value="pink">Pink Pastel</option>
+                            <option value="blue">Blue Sky</option>
+                            <option value="dark">Dark Retro</option>
+                            <option value="rock_debut">Custom: Rock Debut</option>
+                            <option value="rock_muda">Custom: Muda Berbahaya</option>
+                        </select>
+                        <p class="text-[8px] text-gray-500 mt-2">*Catatan: Template custom akan meregang (stretch) menyesuaikan layout yang dipilih.</p>
+                    </div>
+
+                    <button id="btnGenerate" class="pixel-btn mt-6 w-full text-[10px]" style="background-color: #98fb98;">PROSES HASIL AKHIR</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="page-5" class="page-screen">
+        <div class="pixel-window w-full max-w-2xl text-center">
+            <div class="pixel-header yellow">
+                <span class="text-xs">HASIL FOTO & GIF</span>
+            </div>
+            <div class="p-8 flex flex-col items-center bg-white">
+                <div id="loading-result" class="py-16">
+                    <p class="animate-pulse text-sm">MEMPROSES GAMBAR & ANIMASI...</p>
+                    <p class="text-[10px] mt-4 text-gray-500">Mohon tunggu sebentar...</p>
+                </div>
+
+                <img id="finalResultImg" class="border-4 border-black shadow-[8px_8px_0_0_rgba(0,0,0,1)] hidden w-full max-w-sm mb-8" alt="Hasil GIF">
+
+                <div id="download-controls" class="w-full flex flex-col sm:flex-row gap-4 justify-center hidden">
+                    <a id="btnDlGif" download="pixel-booth-animasi.gif" class="pixel-btn flex-1 text-[10px]" style="background-color: #ffb6c1; text-decoration:none;">UNDUH GIF</a>
+                    <a id="btnDlCollage" download="pixel-booth-statis.png" class="pixel-btn flex-1 text-[10px]" style="background-color: #add8e6; text-decoration:none;">UNDUH GAMBAR KOLASE</a>
+                </div>
+                
+                <div class="mt-10 w-full border-t-4 border-black border-dashed pt-6">
+                    <button onclick="restartApp()" class="pixel-btn text-[10px]" style="background-color: #ccc;">ULANGI DARI AWAL</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="capture-canvas" style="display: none;"></canvas>
+
+    <script>
+        // === DATABASE TEMA/FRAME ===
+        const frameData = {
+            pink: { type: 'color', val: '#ffb6c1' },
+            blue: { type: 'color', val: '#add8e6' },
+            dark: { type: 'color', val: '#222222' },
+            rock_debut: { type: 'image', val: 'Layer 3.jpg' },
+            rock_muda: { type: 'image', val: 'Layer 2 copy.jpg' }
+        };
+
+        let currentFrameColor = 'pink';
+        let currentLayout = 'grid'; 
+        let photos = []; 
+        const MAX_PHOTOS = 4;
+        let photoOrder = [0, 1, 2, 3]; 
+        let selectedSlotIndex = null; 
+
+        const video = document.getElementById('video');
+        const overlayCanvas = document.getElementById('overlay-canvas');
+        const overlayCtx = overlayCanvas.getContext('2d');
+        const captureCanvas = document.getElementById('capture-canvas');
+        const captureCtx = captureCanvas.getContext('2d');
+        const colorFilterSel = document.getElementById('colorFilter');
+        const faceFilterSel = document.getElementById('faceFilter');
+        
+        let stream = null;
+        let faceTracker = null;
+        let trackingTask = null;
+
+        const IMG_W = 400; 
+        const IMG_H = 400;
+
+        function goToPage(pageNum) {
+            document.querySelectorAll('.page-screen').forEach(p => p.classList.remove('active'));
+            document.getElementById(`page-${pageNum}`).classList.add('active');
+            if (pageNum === 3) startCameraAndTracking();
+            else stopCameraAndTracking();
+            if (pageNum === 4) setupLayoutEditor();
+        }
+
+        function selectFrame(color) {
+            currentFrameColor = color;
+            document.querySelectorAll('.frame-option').forEach(el => {
+                el.classList.remove('border-black');
+                el.classList.add('border-transparent');
+            });
+            document.getElementById(`frame-opt-${color}`).classList.remove('border-transparent');
+            document.getElementById(`frame-opt-${color}`).classList.add('border-black');
+            document.getElementById('frameTypeFinal').value = color;
+        }
+
+        async function startCameraAndTracking() {
+            if (stream) return; 
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 640, height: 480 } });
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    overlayCanvas.width = video.videoWidth;
+                    overlayCanvas.height = video.videoHeight;
+                    if (!faceTracker) {
+                        faceTracker = new tracking.ObjectTracker('face');
+                        faceTracker.setInitialScale(4);
+                        faceTracker.setStepSize(2);
+                        faceTracker.setEdgesDensity(0.1);
+                        faceTracker.on('track', function(event) {
+                            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                            if (event.data.length === 0) return; 
+                            const rect = event.data[0];
+                            drawFaceFilter(rect.x, rect.y, rect.width, rect.height);
+                        });
+                    }
+                    if (!trackingTask) trackingTask = tracking.track('#video', faceTracker);
+                };
+            } catch (err) {
+                console.error("Error:", err);
+                alert("Akses kamera ditolak atau tidak ditemukan.");
+            }
+        }
+
+        function stopCameraAndTracking() {
+            if (trackingTask) trackingTask.stop();
+        }
+
+        colorFilterSel.addEventListener('change', (e) => {
+            video.style.filter = e.target.value === 'none' ? 'none' : e.target.value;
+        });
+
+        function drawFaceFilter(x, y, w, h) {
+            const filterType = faceFilterSel.value;
+            if (filterType === 'none') return;
+            overlayCtx.fillStyle = '#000'; 
+            if (filterType === 'censor') {
+                const barWidth = w * 0.9, barHeight = h * 0.2;
+                overlayCtx.fillRect(x + (w * 0.05), y + (h * 0.25), barWidth, barHeight);
+            } else if (filterType === 'glasses') {
+                const gW = w * 0.9, gH = h * 0.15, gx = x + (w * 0.05), gy = y + (h * 0.25);
+                overlayCtx.fillRect(gx, gy, gW/2.2, gH);
+                overlayCtx.fillRect(gx + gW/2.2 + gW/10, gy, gW/2.2, gH);
+                overlayCtx.fillRect(gx + gW/2.2, gy + gH/4, gW/10, gH/4); 
+                overlayCtx.fillStyle = '#fff';
+                overlayCtx.fillRect(gx + 5, gy + 2, gW/10, gH/3);
+                overlayCtx.fillRect(gx + gW/2.2 + gW/10 + 5, gy + 2, gW/10, gH/3);
+            }
+        }
+
+        const btnCapture = document.getElementById('btnCapture');
+        const flashEl = document.getElementById('flash');
+        const countdownEl = document.getElementById('countdown');
+        const captureStatus = document.getElementById('capture-status');
+        function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+        function captureSingleFrame() {
+            captureCanvas.width = IMG_W;
+            captureCanvas.height = IMG_H;
+            captureCtx.filter = colorFilterSel.value === 'none' ? 'none' : colorFilterSel.value;
+            const minDim = Math.min(video.videoWidth, video.videoHeight);
+            const sx = (video.videoWidth - minDim) / 2;
+            const sy = (video.videoHeight - minDim) / 2;
+            
+            captureCtx.drawImage(video, sx, sy, minDim, minDim, 0, 0, IMG_W, IMG_H);
+            captureCtx.drawImage(overlayCanvas, sx, sy, minDim, minDim, 0, 0, IMG_W, IMG_H);
+            captureCtx.setTransform(1, 0, 0, 1, 0, 0);
+            captureCtx.filter = 'none';
+            return captureCanvas.toDataURL('image/png');
+        }
+
+        btnCapture.addEventListener('click', async () => {
+            btnCapture.disabled = true;
+            photos = []; 
+            for (let i = 1; i <= MAX_PHOTOS; i++) {
+                captureStatus.innerText = `${i-1} / 4 FOTO`;
+                countdownEl.style.display = 'block';
+                for (let c = 3; c > 0; c--) { countdownEl.innerText = c; await sleep(1000); }
+                countdownEl.style.display = 'none';
+
+                if (i < MAX_PHOTOS) {
+                    flashEl.classList.add('flashing');
+                    setTimeout(() => flashEl.classList.remove('flashing'), 100);
+                    photos.push([captureSingleFrame()]);
+                    await sleep(500); 
+                } else {
+                    captureStatus.innerHTML = `<span style="color:red">🔴 MEREKAM GIF...</span>`;
+                    flashEl.classList.add('flashing');
+                    setTimeout(() => flashEl.classList.remove('flashing'), 100);
+                    let burst = [];
+                    for(let j = 0; j < 15; j++) {
+                        burst.push(captureSingleFrame());
+                        await sleep(130); 
+                    }
+                    photos.push(burst);
+                }
+            }
+            captureStatus.innerText = `4 / 4 SELESAI`;
+            await sleep(800);
+            btnCapture.disabled = false;
+            goToPage(4);
+        });
+
+        const layoutContainer = document.getElementById('layout-preview-container');
+        document.getElementById('layoutType').addEventListener('change', (e) => { currentLayout = e.target.value; renderLayoutEditor(); });
+        document.getElementById('frameTypeFinal').addEventListener('change', (e) => { currentFrameColor = e.target.value; });
+
+        function setupLayoutEditor() {
+            photoOrder = [0, 1, 2, 3]; 
+            selectedSlotIndex = null;
+            document.getElementById('layoutType').value = 'grid';
+            currentLayout = 'grid';
+            renderLayoutEditor();
+        }
+
+        function renderLayoutEditor() {
+            layoutContainer.innerHTML = '';
+            layoutContainer.className = currentLayout === 'grid' ? 'grid grid-cols-2 gap-2 w-full max-w-[300px] aspect-square mx-auto' : 'grid grid-cols-1 gap-2 w-full max-w-[150px] mx-auto';
+            for(let i = 0; i < 4; i++) {
+                const originalPhotoIndex = photoOrder[i];
+                const imgSrc = photos[originalPhotoIndex][0]; 
+                const slot = document.createElement('div');
+                slot.className = `layout-slot w-full aspect-square ${selectedSlotIndex === i ? 'selected' : ''}`;
+                const isGifLabel = originalPhotoIndex === 3 ? '<div style="position:absolute;bottom:0;width:100%;text-align:center;background:red;color:white;font-size:8px;padding:4px 0;">ANIMASI GIF</div>' : '';
+                slot.innerHTML = `<div class="slot-number">${i+1}</div><img src="${imgSrc}" />${isGifLabel}`;
+                slot.onclick = () => handleSlotClick(i);
+                layoutContainer.appendChild(slot);
+            }
+        }
+
+        function handleSlotClick(index) {
+            if (selectedSlotIndex === null) { selectedSlotIndex = index; } 
+            else {
+                if (selectedSlotIndex !== index) {
+                    let temp = photoOrder[selectedSlotIndex];
+                    photoOrder[selectedSlotIndex] = photoOrder[index];
+                    photoOrder[index] = temp;
+                }
+                selectedSlotIndex = null;
+            }
+            renderLayoutEditor();
+        }
+
+        document.getElementById('btnGenerate').addEventListener('click', () => { goToPage(5); processFinalOutputs(); });
+
+        async function processFinalOutputs() {
+            const finalImgEl = document.getElementById('finalResultImg');
+            const loadingEl = document.getElementById('loading-result');
+            const controlsEl = document.getElementById('download-controls');
+            
+            finalImgEl.style.display = 'none';
+            controlsEl.style.display = 'none';
+            loadingEl.style.display = 'block';
+
+            const frameInfo = frameData[currentFrameColor];
+            const padding = 20;
+            const canvasW = currentLayout === 'grid' ? (IMG_W * 2) + (padding * 3) : IMG_W + (padding * 2);
+            const canvasH = currentLayout === 'grid' ? (IMG_H * 2) + (padding * 3) + 60 : (IMG_H * 4) + (padding * 5) + 60;
+
+            // Load Custom Template Image (Jika tipe image dipilih)
+            let customBgImage = null;
+            if (frameInfo.type === 'image') {
+                customBgImage = await new Promise(resolve => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = () => {
+                        console.error("Gagal memuat template gambar: " + frameInfo.val);
+                        resolve(null); // Fallback jika gambar tidak ditemukan di folder
+                    };
+                    img.src = frameInfo.val;
+                });
+            }
+
+            const loadedPhotos = [];
+            for (let i = 0; i < photos.length; i++) {
+                let frames = [];
+                for (let j = 0; j < photos[i].length; j++) {
+                    frames.push(await new Promise(resolve => {
+                        const img = new Image();
+                        img.onload = () => resolve(img);
+                        img.src = photos[i][j];
+                    }));
+                }
+                loadedPhotos.push(frames);
+            }
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvasW;
+            tempCanvas.height = canvasH;
+            const tCtx = tempCanvas.getContext('2d');
+
+            function drawFinalLayout(frameIndexForBurst) {
+                // Background Drawing Logic (Warna atau Custom Image)
+                if (customBgImage) {
+                    tCtx.drawImage(customBgImage, 0, 0, canvasW, canvasH);
+                } else {
+                    tCtx.fillStyle = frameInfo.val;
+                    tCtx.fillRect(0, 0, canvasW, canvasH);
+                    
+                    // Watermark (Hanya Digambar jika bukan template custom)
+                    tCtx.fillStyle = (currentFrameColor === 'dark') ? '#fff' : '#000';
+                    tCtx.font = '24px "Press Start 2P"';
+                    tCtx.textAlign = 'center';
+                    tCtx.fillText('PIXEL BOOTH', canvasW/2, canvasH - 25);
+                }
+
+                // Drawing Foto
+                for(let i = 0; i < 4; i++) {
+                    let x, y;
+                    if (currentLayout === 'grid') {
+                        x = padding + (i % 2) * (IMG_W + padding);
+                        y = padding + Math.floor(i / 2) * (IMG_H + padding);
+                    } else {
+                        x = padding;
+                        y = padding + i * (IMG_H + padding);
+                    }
+                    
+                    const originalPhotoIndex = photoOrder[i];
+                    let imgToDraw = originalPhotoIndex === 3 
+                        ? loadedPhotos[3][frameIndexForBurst % loadedPhotos[3].length] 
+                        : loadedPhotos[originalPhotoIndex][0];
+                    
+                    tCtx.drawImage(imgToDraw, x, y, IMG_W, IMG_H);
+                    tCtx.strokeStyle = '#000'; 
+                    tCtx.lineWidth = 6;
+                    tCtx.strokeRect(x, y, IMG_W, IMG_H);
+                }
+                return tempCanvas.toDataURL('image/png');
+            }
+
+            document.getElementById('btnDlCollage').href = drawFinalLayout(0);
+
+            const gifFrames = [];
+            const burstLength = loadedPhotos[3].length; 
+            for(let k = 0; k < burstLength; k++) { gifFrames.push(drawFinalLayout(k)); }
+            for(let k = 0; k < 4; k++) { gifFrames.push(drawFinalLayout(burstLength - 1)); }
+
+            gifshot.createGIF({
+                images: gifFrames,
+                gifWidth: canvasW,
+                gifHeight: canvasH,
+                interval: 0.13, 
+                numWorkers: 2,
+            }, function (obj) {
+                if (!obj.error) {
+                    finalImgEl.src = obj.image;
+                    document.getElementById('btnDlGif').href = obj.image;
+                    loadingEl.style.display = 'none';
+                    finalImgEl.style.display = 'block';
+                    controlsEl.style.display = 'flex';
+                } else {
+                    alert("Maaf, terjadi kesalahan saat membuat GIF.");
+                }
+            });
+        }
+
+        function restartApp() {
+            photos = [];
+            document.getElementById('capture-status').innerText = '0 / 4 FOTO';
+            selectFrame('pink');
+            goToPage(1);
+        }
+
+        selectFrame('pink');
+    </script>
+</body>
+</html>
